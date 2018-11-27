@@ -36,7 +36,14 @@ def get_token(registry, repository, creds):
             lg.info("Authenticating in realm {}".format(bearer.group(1)))
             res = requests.get("{}?scope=repository:{}:pull&service={}".format(bearer.group(1), repository, bearer.group(2)), auth=creds)
             if (res.status_code == 200):
-                return res.json()["access_token"]
+                token = res.json()
+                if token.get("token"):
+                    return token["token"]
+                elif token.get("access_token"):
+                    return token["access_token"]
+                else:
+                    lg.error("Unexpected response from server: {}".format(token))
+                    sys.exit(1)
             else:
                 lg.error("Authentication failed: {}".format(res.json()))
                 sys.exit(1)
