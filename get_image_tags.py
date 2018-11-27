@@ -73,6 +73,9 @@ def parse_image(image):
 def resolve_digest(image):
     lg.debug("Resolving digest of image {} tag {}".format(image['path'], image['tag']))
     res = requests.get("https://{}/v2/{}/manifests/{}".format(image['host'], image['path'], image['tag']), headers=headers)
+    if res.status_code != 200:
+        lg.error("Unexpected error: {}".format(res.json()))
+        return
     image['digest'] = res.headers['Docker-Content-Digest']
     return image
 
@@ -95,7 +98,7 @@ def resolve_tags(image):
 
     for task in tasks:
         d = task.get()
-        if d["digest"] == image["digest"]:
+        if d and d.get("digest") == image["digest"]:
             lg.info("Found matching tag {}".format(d["tag"]))
             matched_tags.append(d["tag"])
     return matched_tags
