@@ -45,7 +45,7 @@ def get_token(registry, repository, creds):
                     lg.error("Unexpected response from server: {}".format(token))
                     sys.exit(1)
             else:
-                lg.error("Authentication failed: {}".format(res.json()))
+                lg.error("Authentication failed: status_code={}, response={}".format(res.status_code, res.text))
                 sys.exit(1)
         else:
             lg.info("Using basic auth")
@@ -81,7 +81,7 @@ def resolve_digest(image):
     lg.debug("Resolving digest of image {} tag {}".format(image['path'], image['tag']))
     res = requests.get("https://{}/v2/{}/manifests/{}".format(image['host'], image['path'], image['tag']), headers=headers)
     if res.status_code != 200:
-        lg.error("Unexpected error: {}".format(res.json()))
+        lg.error("Unexpected error: status_code={}, response={}".format(res.status_code, res.text))
         return
     image['digest'] = res.headers['Docker-Content-Digest']
     return image
