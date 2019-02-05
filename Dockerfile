@@ -1,7 +1,8 @@
 FROM python:3-alpine
 
-ADD requirements.txt /
-RUN pip install -r /requirements.txt
+WORKDIR /opt/dockertools
+ADD requirements.txt /opt/dockertools
+RUN pip install -r /opt/dockertools/requirements.txt
 
-ADD get_image_tags.py /usr/local/bin/
-ENTRYPOINT ["/usr/local/bin/get_image_tags.py"]
+COPY dockertools /opt/dockertools/dockertools/
+COPY get_image_tags.py cleanup_registry.py /opt/dockertools/
