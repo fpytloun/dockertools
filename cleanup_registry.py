@@ -73,6 +73,13 @@ def main():
 
         # First iteration for basic sorting of keep vs. delete
         for tag in image_tags:
+            if not tag.digest:
+                try:
+                    tag.resolve_digest()
+                except Exception as e:
+                    lg.error("Failed to resolve digest of image {} (broken registry?): {}".format(tag.name, e))
+                    continue
+
             if re.match(tags_regex, tag.tag):
                 lg.info("Not deleting image {} as it's matching whitelisted tags".format(tag.get_name(tag=True)))
                 keep_images.append(tag)
