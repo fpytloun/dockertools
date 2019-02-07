@@ -147,7 +147,10 @@ def main():
 
         errors = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as executor:
-            tasks = {executor.submit(images[0].delete): images for images in delete_images.values()}
+            tasks = {}
+            for images in delete_images.values():
+                lg.info("Deleting image {} ({})".format(images[0].name, ", ".join([i.tag for i in images])))
+                tasks[executor.submit(images[0].delete)] = images
             for task in concurrent.futures.as_completed(tasks):
                 try:
                     data = task.result()

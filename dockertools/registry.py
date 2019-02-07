@@ -203,7 +203,6 @@ class Image(object):
         return self.name()
 
     def delete(self):
-        lg.info("Deleting image {}".format(self.name))
         res = self.registry.delete("https://{}/v2/{}/manifests/{}".format(self.host, self.path, self.digest))
         if res.status_code == 404:
             lg.info("Image {} seems to be already deleted".format(self.name))
