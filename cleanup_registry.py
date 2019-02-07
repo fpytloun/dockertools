@@ -19,6 +19,7 @@ def parse_args(args=None):
     parser.add_argument('--keep-tags', help="Regular expression of tags to keep", required=False)
     parser.add_argument('--keep-age', type=int, help="Keep images younger than this number of hours", required=False)
     parser.add_argument('--keep-file', help="File with definition of images to keep", required=False)
+    parser.add_argument('--skip-errors', help="Skip some errors, eg. to workaround broken registries", action="store_true", required=False)
     parser.add_argument('-v', '--verbose', help="Enable verbose logging", action="store_true", required=False)
     parser.add_argument('-d', '--debug', help="Enable debug logging", action="store_true", required=False)
     parser.add_argument('--dry', help="Dry-run only", action="store_true", required=False)
@@ -67,7 +68,7 @@ def main():
         tasks = {}
         with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as executor:
             for tag in image.get_image_tags():
-                tasks[executor.submit(tag.get_config)] =tag
+                tasks[executor.submit(tag.get_config)] = tag
                 image_tags.append(tag)
 
             for task in concurrent.futures.as_completed(tasks):
@@ -76,7 +77,7 @@ def main():
                 except Exception as e:
                     errors.append(e)
                     lg.error(str(e).strip())
-        if errors:
+        if errors and not args.skip_errors:
             lg.error("Errors during execution, see output above. Exitting.")
             sys.exit(1)
 
