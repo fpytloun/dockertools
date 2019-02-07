@@ -4,7 +4,7 @@ import sys
 import argparse
 import logging
 import re
-from multiprocessing.pool import ThreadPool
+import concurrent.futures
 from dockertools.registry import Registry, Image
 from datetime import timedelta, datetime
 
@@ -61,12 +61,24 @@ def main():
     for image in images:
         lg.info("Processing image {}/{}".format(image.host, image.path))
         image_tags = []
-        p = ThreadPool(args.jobs)
-        for tag in image.get_image_tags():
-            p.apply_async(tag.get_config)
-            image_tags.append(tag)
-        p.close()
-        p.join()
+
+
+        errors = []
+        tasks = {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as executor:
+            for tag in image.get_image_tags():
+                tasks[executor.submit(tag.get_config)] =tag
+                image_tags.append(tag)
+
+            for task in concurrent.futures.as_completed(tasks):
+                try:
+                    data = task.result()
+                except Exception as e:
+                    errors.append(e)
+                    lg.error(str(e).strip())
+        if errors:
+            lg.error("Errors during execution, see output above. Exitting.")
+            sys.exit(1)
 
         delete_images = {}
         keep_images = []
@@ -133,13 +145,18 @@ def main():
         else:
             lg.info("Deleting {} images".format(len(delete_images)))
 
-        p = ThreadPool(args.jobs)
-        for images in delete_images.values():
-            lg.info("Deleting image {} ({})".format(images[0].name, ", ".join([i.tag for i in images])))
-            if not args.dry:
-                p.apply_async(images[0].delete)
-        p.close()
-        p.join()
+        errors = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as executor:
+            tasks = {executor.submit(images[0].delete): images for images in delete_images.values()}
+            for task in concurrent.futures.as_completed(tasks):
+                try:
+                    data = task.result()
+                except Exception as e:
+                    errors.append(e)
+                    lg.error(str(e).strip())
+        if errors:
+            lg.error("Errors during execution, see output above. Exitting.")
+            sys.exit(1)
 
 
 if __name__ == '__main__':

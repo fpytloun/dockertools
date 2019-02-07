@@ -180,12 +180,13 @@ class Image(object):
         return self.name()
 
     def delete(self):
+        lg.info("Deleting image {}".format(self.name))
         res = self.registry.delete("https://{}/v2/{}/manifests/{}".format(self.host, self.path, self.digest), scope="repository:{}:*".format(self.path))
         if res.status_code == 404:
             lg.info("Image {} seems to be already deleted".format(self.name))
-            return
         if res.status_code != 202:
             raise Exception("Deleting image {} failed with status code {}: {}".format(self.name, res.status_code, res.text))
+        return res
 
     def get_config(self):
         lg.debug("Getting config for image {}".format(self.name))
