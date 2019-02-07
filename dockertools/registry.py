@@ -2,6 +2,8 @@ import re
 import base64
 import requests
 import logging
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
 from multiprocessing.pool import ThreadPool
 from datetime import datetime
 
@@ -43,7 +45,7 @@ class Registry(object):
         return Image("{}/{}".format(self.registry, image), self)
 
     def get_auth_scheme(self):
-        catalog = requests.head('https://{0}/v2/_catalog'.format(self.registry))
+        catalog = self.requests_retry_session().head('https://{0}/v2/_catalog'.format(self.registry))
         if 'WWW-Authenticate' in catalog.headers:
             oauth = self.parse_www_authenticate(catalog.headers['WWW-Authenticate'])
             if oauth.get("realm"):
@@ -83,6 +85,21 @@ class Registry(object):
     def image(self, image):
         return Image(image, self)
 
+    def requests_retry_session( self, retries=3, backoff_factor=0.3,
+            status_forcelist=(500, 502, 504), session=None):
+        session = session or requests.Session()
+        retry = Retry(
+            total=retries,
+            read=retries,
+            connect=retries,
+            backoff_factor=backoff_factor,
+            status_forcelist=status_forcelist,
+        )
+        adapter = HTTPAdapter(max_retries=retry)
+        session.mount('http://', adapter)
+        session.mount('https://', adapter)
+        return session
+
     def get(self, *args, **kwargs):
         headers = self.headers.copy()
         if self.auth_scheme == "basic":
@@ -91,13 +108,13 @@ class Registry(object):
         if self.auth_scheme == "oauth":
             if self.token:
                 headers['Authorization'] = 'Bearer {}'.format(self.token)
-            res = requests.get(*args, **kwargs, headers=headers)
+            res = self.requests_retry_session().get(*args, **kwargs, headers=headers)
             if res.status_code == 401:
                 self.token = self.get_token(res)
                 headers['Authorization'] = 'Bearer {}'.format(self.token)
-                res = requests.get(*args, **kwargs, headers=headers)
+                res = self.requests_retry_session().get(*args, **kwargs, headers=headers)
         else:
-            res = requests.get(*args, **kwargs, headers=headers)
+            res = self.requests_retry_session().get(*args, **kwargs, headers=headers)
         return res
 
     def delete(self, *args, **kwargs):
@@ -108,13 +125,13 @@ class Registry(object):
         if self.auth_scheme == "oauth":
             if self.token:
                 headers['Authorization'] = 'Bearer {}'.format(self.token)
-            res = requests.delete(*args, **kwargs, headers=headers)
+            res = self.requests_retry_session().delete(*args, **kwargs, headers=headers)
             if res.status_code == 401:
                 self.token = self.get_token(res)
                 headers['Authorization'] = 'Bearer {}'.format(self.token)
-                res = requests.delete(*args, **kwargs, headers=headers)
+                res = self.requests_retry_session().delete(*args, **kwargs, headers=headers)
         else:
-            res = requests.delete(*args, **kwargs, headers=headers)
+            res = self.requests_retry_session().delete(*args, **kwargs, headers=headers)
         return res
 
 class Image(object):
