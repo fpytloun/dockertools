@@ -11,29 +11,27 @@ lg = logging.getLogger(__name__)
 
 class Registry(object):
     def __init__(self, registry):
-        self.tokens = {}
+        self.token = ""
         self.registry = registry
+        self.auth_scheme = ""
+        self.creds = None
         self.headers = {
             'Accept': 'application/vnd.docker.distribution.manifest.v2+json',
         }
 
-    def login(self, creds):
+    def login(self, creds=None):
+        if not creds:
+            return
+
         if type(creds) == str:
             creds = creds.split(':')
             creds = (creds[0], creds[1])
 
         self.creds = creds
-        token = self.get_token("repository:ubuntu:pull")
-        if token:
-            lg.debug("Obtained token: {}".format(token))
-        elif self.creds:
-            lg.debug("Using basic auth")
-            self.headers['Authorization'] = 'Basic {}'.format(base64.b64encode(bytes(args.login, 'utf-8')))
-        else:
-            lg.debug("Proceeding without auth")
+        self.get_auth_scheme()
 
     def get_images(self):
-        res = self.get("https://{}/v2/_catalog/".format(self.registry), scope="registry:catalog:*")
+        res = self.get("https://{}/v2/_catalog/".format(self.registry))
         if res.status_code != 200:
             raise Exception("Unexpected error: status_code={}, response={}".format(res.status_code, res.text))
         images = []
@@ -44,54 +42,79 @@ class Registry(object):
     def get_image(self, image):
         return Image("{}/{}".format(self.registry, image), self)
 
-    def get_token(self, scope):
-        if scope in self.tokens.keys():
-            return self.tokens[scope]
-        res = self.get("https://{}/v2/".format(self.registry))
-        if res.status_code == 401:
-            bearer = re.match(r'.*Bearer realm="([a-z0-9\\.\\/:\\-]*)",service="([a-z0-9\\.\\/:\\-]*)"', res.headers['WWW-Authenticate'])
-            if bearer:
-                lg.debug("Authenticating in realm {}".format(bearer.group(1)))
-                get_url = "{}?scope={}&service={}".format(bearer.group(1), scope, bearer.group(2))
-                res = self.get(get_url, auth=self.creds)
-                if (res.status_code == 200):
-                    token = res.json()
-                    if token.get("token"):
-                        lg.debug("Obtained token for scope {}".format(scope))
-                        self.tokens[scope] = token["token"]
-                        return token["token"]
-                    elif token.get("access_token"):
-                        lg.debug("Obtained token for scope {}".format(scope))
-                        self.tokens[scope] = token["access_token"]
-                        return token["access_token"]
-                    else:
-                        raise Exception("Unexpected response from server: {}".format(token))
-                else:
-                    raise Exception ("Authentication failed: status_code={}, response={}".format(res.status_code, res.text))
+    def get_auth_scheme(self):
+        catalog = requests.head('https://{0}/v2/_catalog'.format(self.registry))
+        if 'WWW-Authenticate' in catalog.headers:
+            oauth = self.parse_www_authenticate(catalog.headers['WWW-Authenticate'])
+            if oauth.get("realm"):
+                self.auth_scheme = "oauth"
+                lg.debug("Using oauth as authentication scheme")
             else:
-                lg.debug("Using basic auth")
+                self.auth_scheme = "basic"
+                lg.debug("Using basic as authentication scheme")
+        return self.auth_scheme
+
+    def parse_www_authenticate(self, header):
+        bearer = re.match(r'.*Bearer realm=\"([a-z0-9\\.\\/:\\-]*)\",service=\"([a-z0-9\\.\\/:\\-]*)\",scope=\"([a-z0-9\*\\.\\/:\\-]*)\"', header)
+        if bearer:
+            return {
+                'realm': bearer.group(1),
+                'service': bearer.group(2),
+                'scope': bearer.group(3),
+            }
         else:
-            lg.debug("Server didn't requested any authentication")
+            return {}
+
+    def get_token(self, res):
+        bearer = self.parse_www_authenticate(res.headers['WWW-Authenticate'])
+        get_url = "{}?service={}&scope={}".format(bearer['realm'], bearer['service'], bearer['scope'])
+        res = self.get(get_url, auth=self.creds)
+        if (res.status_code == 200):
+            token = res.json()
+            if token.get("access_token"):
+                lg.debug("Obtained token {} for {}".format(token["access_token"], bearer))
+                return token["access_token"]
+            elif token.get("token"):
+                lg.debug("Obtained token {} for {}".format(token["token"], bearer))
+                return token["token"]
+            else:
+                raise Exception("Unexpected response from server: {}".format(token))
 
     def image(self, image):
         return Image(image, self)
 
     def get(self, *args, **kwargs):
         headers = self.headers.copy()
-        scope = kwargs.pop('scope', None)
-        if scope and self.tokens:
-            token = self.get_token(scope)
-            headers['Authorization'] = 'Bearer {}'.format(token)
-        res = requests.get(*args, **kwargs, headers=headers)
+        if self.auth_scheme == "basic":
+            self.headers['Authorization'] = 'Basic {}'.format(base64.b64encode(bytes(":".join(self.creds), 'utf-8')))
+
+        if self.auth_scheme == "oauth":
+            if self.token:
+                headers['Authorization'] = 'Bearer {}'.format(self.token)
+            res = requests.get(*args, **kwargs, headers=headers)
+            if res.status_code == 401:
+                self.token = self.get_token(res)
+                headers['Authorization'] = 'Bearer {}'.format(self.token)
+                res = requests.get(*args, **kwargs, headers=headers)
+        else:
+            res = requests.get(*args, **kwargs, headers=headers)
         return res
 
     def delete(self, *args, **kwargs):
         headers = self.headers.copy()
-        scope = kwargs.pop('scope', None)
-        if scope and self.tokens:
-            token = self.get_token(scope)
-            headers['Authorization'] = 'Bearer {}'.format(token)
-        res = requests.delete(*args, **kwargs, headers=headers)
+        if self.auth_scheme == "basic":
+            self.headers['Authorization'] = 'Basic {}'.format(base64.b64encode(bytes(":".join(self.creds), 'utf-8')))
+
+        if self.auth_scheme == "oauth":
+            if self.token:
+                headers['Authorization'] = 'Bearer {}'.format(self.token)
+            res = requests.delete(*args, **kwargs, headers=headers)
+            if res.status_code == 401:
+                self.token = self.get_token(res)
+                headers['Authorization'] = 'Bearer {}'.format(self.token)
+                res = requests.delete(*args, **kwargs, headers=headers)
+        else:
+            res = requests.delete(*args, **kwargs, headers=headers)
         return res
 
 class Image(object):
@@ -129,7 +152,7 @@ class Image(object):
 
     def resolve_digest(self):
         lg.debug("Resolving digest of image {}".format(self.name,))
-        res = self.registry.get("https://{}/v2/{}/manifests/{}".format(self.host, self.path, self.tag), scope="repository:{}:pull".format(self.path))
+        res = self.registry.get("https://{}/v2/{}/manifests/{}".format(self.host, self.path, self.tag))
         if res.status_code != 200:
             raise Exception("Unexpected error: status_code={}, response={}".format(res.status_code, res.text))
         self.digest = res.headers['Docker-Content-Digest']
@@ -138,7 +161,7 @@ class Image(object):
     def get_tags(self):
         if not self.tags:
             lg.info("Getting all tags for image {}/{}".format(self.host, self.path))
-            res = self.registry.get("https://{}/v2/{}/tags/list?n=999".format(self.host, self.path), scope="repository:{}:pull".format(self.path))
+            res = self.registry.get("https://{}/v2/{}/tags/list?n=999".format(self.host, self.path))
             if res.status_code != 200:
                 raise Exception("Unexpected error: status_code={}, response={}".format(res.status_code, res.text))
             self.tags = res.json()["tags"]
@@ -181,7 +204,7 @@ class Image(object):
 
     def delete(self):
         lg.info("Deleting image {}".format(self.name))
-        res = self.registry.delete("https://{}/v2/{}/manifests/{}".format(self.host, self.path, self.digest), scope="repository:{}:*".format(self.path))
+        res = self.registry.delete("https://{}/v2/{}/manifests/{}".format(self.host, self.path, self.digest))
         if res.status_code == 404:
             lg.info("Image {} seems to be already deleted".format(self.name))
         if res.status_code != 202:
@@ -190,7 +213,7 @@ class Image(object):
 
     def get_config(self):
         lg.debug("Getting config for image {}".format(self.name))
-        res = self.registry.get("https://{}/v2/{}/manifests/{}".format(self.host, self.path, self.tag or self.digest), scope="repository:{}:pull".format(self.path))
+        res = self.registry.get("https://{}/v2/{}/manifests/{}".format(self.host, self.path, self.tag or self.digest))
 
         if res.status_code != 200:
             raise Exception("Unexpected error: status_code={}, response={}".format(res.status_code, res.text))
@@ -198,7 +221,7 @@ class Image(object):
         self.digest = res.headers['Docker-Content-Digest']
         config_digest = res.json()["config"]["digest"]
 
-        self.config = self.registry.get("https://{}/v2/{}/blobs/{}".format(self.host, self.path, config_digest), scope="repository:{}:pull".format(self.path)).json()
+        self.config = self.registry.get("https://{}/v2/{}/blobs/{}".format(self.host, self.path, config_digest)).json()
         return self.config
 
     @property
