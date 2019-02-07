@@ -57,7 +57,7 @@ class Registry(object):
         return self.auth_scheme
 
     def parse_www_authenticate(self, header):
-        bearer = re.match(r'.*Bearer realm=\"([a-z0-9\\.\\/:\\-]*)\",service=\"([a-z0-9\\.\\/:\\-]*)\",scope=\"([a-z0-9\*\\.\\/:\\-]*)\"', header)
+        bearer = re.match(r'.*Bearer realm=\"([a-z0-9\\.\\/:\\-]*)\",service=\"([a-z0-9\\.\\/:\\-]*)\",scope=\"([a-z0-9_\*\\.\\/:\\-]*)\"', header)
         if bearer:
             return {
                 'realm': bearer.group(1),
