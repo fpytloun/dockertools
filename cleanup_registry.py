@@ -158,7 +158,7 @@ def main():
                 except Exception as e:
                     errors.append(e)
                     lg.error(str(e).strip())
-        if errors:
+        if errors and not args.skip_errors:
             lg.error("Errors during execution, see output above. Exitting.")
             sys.exit(1)
 
