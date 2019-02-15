@@ -18,7 +18,7 @@ class Registry(object):
         self.auth_scheme = ""
         self.creds = None
         self.headers = {
-            'Accept': 'application/vnd.docker.distribution.manifest.v2+json',
+            'Accept': 'application/vnd.docker.distribution.manifest.v2+json,application/vnd.oci.image.manifest.v1+json',
         }
 
     def login(self, creds=None):
