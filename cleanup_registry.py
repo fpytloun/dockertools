@@ -125,10 +125,19 @@ def main():
                     continue
 
             if args.keep_age:
-                if tag.created > datetime.now() - timedelta(hours=args.keep_age):
-                    lg.info("Not deleting image {} as it's younger than {} hours".format(tag.get_name(tag=True), args.keep_age))
-                    keep_images.append(tag)
-                    continue
+                try:
+                    if tag.created > datetime.now() - timedelta(hours=args.keep_age):
+                        lg.info("Not deleting image {} as it's younger than {} hours".format(tag.get_name(tag=True), args.keep_age))
+                        keep_images.append(tag)
+                        continue
+                except Exception as e:
+                    if not args.skip_errors:
+                        lg.error("Errors during execution, see output above. Exitting.")
+                        sys.exit(1)
+                    else:
+                        lg.error(e)
+                        keep_images.append(tag)
+                        continue
 
             # Mark rest for deletion
             if tag not in keep_images:
