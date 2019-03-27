@@ -16,6 +16,7 @@ def parse_args(args=None):
     parser.add_argument('-l', '--login', help="Login and password for access to docker registry", required=False)
     parser.add_argument('-i', '--images', nargs='+', help="Run cleanup for selected images", required=False)
     parser.add_argument('-j', '--jobs', type=int, default=8, help="Number of jobs for repository operations", required=False)
+    parser.add_argument('--keep-images', help="Regular expression of images to keep", required=False)
     parser.add_argument('--keep-tags', help="Regular expression of tags to keep", required=False)
     parser.add_argument('--keep-age', type=int, help="Keep images younger than this number of hours", required=False)
     parser.add_argument('--keep-file', help="File with definition of images to keep", required=False)
@@ -41,6 +42,10 @@ def main():
     tags_regex = re.compile('^$')
     if args.keep_tags:
         tags_regex = re.compile(args.keep_tags)
+
+    images_regex = re.compile('^$')
+    if args.keep_images:
+        images_regex = re.compile(args.keep_images)
 
     registry = Registry(args.registry)
     registry.login(args.login)
@@ -95,6 +100,11 @@ def main():
 
             if re.match(tags_regex, tag.tag):
                 lg.info("Not deleting image {} as it's matching whitelisted tags".format(tag.get_name(tag=True)))
+                keep_images.append(tag)
+                continue
+
+            if re.match(images_regex, tag.path) or re.match(images_regex, '{}/{}'.format(tag.host, tag.path)):
+                lg.info("Not deleting image {} as it's matching whitelisted image name".format(tag.get_name(tag=True)))
                 keep_images.append(tag)
                 continue
 
