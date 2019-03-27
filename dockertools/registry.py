@@ -237,7 +237,11 @@ class Image(object):
         self.digest = res.headers['Docker-Content-Digest']
         config_digest = res.json()["config"]["digest"]
 
-        self.config = self.registry.get("https://{}/v2/{}/blobs/{}".format(self.host, self.path, config_digest)).json()
+        res = self.registry.get("https://{}/v2/{}/blobs/{}".format(self.host, self.path, config_digest))
+        if res.status_code != 200:
+            raise Exception("Unexpected error: status_code={}, response={}".format(res.status_code, res.text))
+        self.config = res.json()
+
         return self.config
 
     @property
