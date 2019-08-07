@@ -178,10 +178,21 @@ class Image(object):
     def get_tags(self):
         if not self.tags:
             lg.info("Getting all tags for image {}/{}".format(self.host, self.path))
+            tags = []
             res = self.registry.get("https://{}/v2/{}/tags/list?n=999".format(self.host, self.path))
             if res.status_code != 200:
                 raise Exception("Unexpected error: status_code={}, response={}".format(res.status_code, res.text))
-            self.tags = res.json()["tags"]
+            tags += res.json()["tags"]
+
+            while res.headers.get('Link'):
+                # Paginated result
+                link = re.match(r'^<(.*)>.*', res.headers['Link'])
+                res = self.registry.get("https://{}{}".format(self.host, link.group(1)))
+                if res.status_code != 200:
+                    raise Exception("Unexpected error: status_code={}, response={}".format(res.status_code, res.text))
+                tags += res.json()["tags"]
+
+            self.tags = tags
         return self.tags
 
     def get_image_tag(self, tag):
