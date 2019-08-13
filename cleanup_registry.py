@@ -162,24 +162,25 @@ def main():
 
         if args.dry:
             lg.info("Deleting {} images (dry-run)".format(len(delete_images)))
+            sys.exit(0)
         else:
             lg.info("Deleting {} images".format(len(delete_images)))
 
-        errors = []
-        with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as executor:
-            tasks = {}
-            for images in delete_images.values():
-                lg.info("Deleting image {} ({})".format(images[0].name, ", ".join([i.tag for i in images])))
-                tasks[executor.submit(images[0].delete)] = images
-            for task in concurrent.futures.as_completed(tasks):
-                try:
-                    data = task.result()
-                except Exception as e:
-                    errors.append(e)
-                    lg.error(str(e).strip())
-        if errors and not args.skip_errors:
-            lg.error("Errors during execution, see output above. Exitting.")
-            sys.exit(1)
+            errors = []
+            with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as executor:
+                tasks = {}
+                for images in delete_images.values():
+                    lg.info("Deleting image {} ({})".format(images[0].name, ", ".join([i.tag for i in images])))
+                    tasks[executor.submit(images[0].delete)] = images
+                for task in concurrent.futures.as_completed(tasks):
+                    try:
+                        data = task.result()
+                    except Exception as e:
+                        errors.append(e)
+                        lg.error(str(e).strip())
+            if errors and not args.skip_errors:
+                lg.error("Errors during execution, see output above. Exitting.")
+                sys.exit(1)
 
 
 if __name__ == '__main__':
